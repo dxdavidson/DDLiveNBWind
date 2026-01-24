@@ -1,16 +1,15 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const cors = require('cors');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-const cors = require('cors');
-app.use(cors());
-
+app.use(cors()); // Enable CORS for all origins
 
 app.get('/api/wind', async (req, res) => {
   try {
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const page = await browser.newPage();
     await page.goto('http://88.97.23.70:82/', { waitUntil: 'networkidle0' });
 
