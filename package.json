@@ -1,15 +1,22 @@
 {
   "name": "ddlivenbwind",
   "version": "1.0.0",
-  "description": "Proxy server for wind data using Puppeteer",
-  "main": "server.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "xpostinstall": "puppeteer install"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
-    "express": "^4.18.2",
-    "puppeteer": "^21.3.8",
-    "cors": "^2.8.5"
+    "@sparticuz/chromium": "^143.0.4",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jsdom": "^27.4.0",
+    "node-fetch": "^3.3.2",
+    "puppeteer": "^24.34.0",
+    "puppeteer-core": "^24.34.0"
   }
 }
