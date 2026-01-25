@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors()); // Enable CORS for all origins
 
 app.get('/api/wind', async (req, res) => {
-  console.log("➡️ /api/wind called");
+  console.log("V2 /api/wind called");
 
   try {
     console.log("Launching browser...");
@@ -44,7 +44,7 @@ app.get('/api/wind', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Proxy server running on port ${PORT}`);
+  console.log(`V2 Proxy server running on port ${PORT}`);
 });
 
 app.get('/', (req, res) => {
