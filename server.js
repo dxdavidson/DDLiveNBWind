@@ -43,9 +43,6 @@ app.get('/api/wind', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`V2 Proxy server running on port ${PORT}`);
-});
 
 app.get('/', (req, res) => {
   res.send('DDLiveNBWind proxy server is running');
@@ -53,4 +50,8 @@ app.get('/', (req, res) => {
 
 app.get("/health", (req, res) => {
   res.send("ok");
+});
+
+app.listen(PORT, () => {
+  console.log(`V3 Proxy server running on port ${PORT}`);
 });
