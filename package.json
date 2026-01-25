@@ -9,7 +9,6 @@
   "dependencies": {
     "express": "^4.19.2",
     "cors": "^2.8.6",
-    "jsdom": "^27.4.0",
     "node-fetch": "^3.3.2",
     "puppeteer": "^24.34.0"
   }
