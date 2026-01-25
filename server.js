@@ -8,8 +8,11 @@ const PORT = process.env.PORT || 3000;
 app.use(cors()); // Enable CORS for all origins
 
 app.get('/api/wind', async (req, res) => {
+  console.log("➡️ /api/wind called");
+
   try {
-    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    console.log("Launching browser...");
+    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox', "--disable-dev-shm-usage","--disable-gpu","--no-zygote"] });
     const page = await browser.newPage();
     await page.goto('http://88.97.23.70:82/', { waitUntil: 'networkidle0' });
 
@@ -48,3 +51,6 @@ app.get('/', (req, res) => {
   res.send('DDLiveNBWind proxy server is running');
 });
 
+app.get("/health", (req, res) => {
+  res.send("ok");
+});
