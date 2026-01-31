@@ -2,8 +2,9 @@
   "name": "ddlivenbwind",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,7 +17,6 @@
     "express": "^5.2.1",
     "jsdom": "^27.4.0",
     "node-fetch": "^3.3.2",
-    "puppeteer": "^24.34.0",
-    "puppeteer-core": "^24.34.0"
+    "puppeteer": "^24.34.0"
   }
 }
