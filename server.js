@@ -15,7 +15,7 @@ try {
   chromium = null;
 }
 
-function getLaunchOptions() {
+async function getLaunchOptions() {
   const options = {
     headless: true,
     ignoreHTTPSErrors: true,
@@ -33,11 +33,15 @@ function getLaunchOptions() {
   };
   if (chromium) {
     try {
+      let execPath;
       if (typeof chromium.executablePath === 'function') {
-        options.executablePath = chromium.executablePath();
+        const maybe = chromium.executablePath();
+        // Handle both Promise and direct string return values
+        execPath = (maybe && typeof maybe.then === 'function') ? await maybe : maybe;
       } else if (chromium.path) {
-        options.executablePath = chromium.path;
+        execPath = chromium.path;
       }
+      if (execPath) options.executablePath = execPath;
     } catch (e) {
       console.warn('Could not resolve Chromium executable path:', e.message);
     }
@@ -48,8 +52,8 @@ function getLaunchOptions() {
 app.get('/api/wind', async (req, res) => {
   let browser;
   try {
-    const launchOptions = getLaunchOptions();
-    console.log('Launching Puppeteer with options', { headless: launchOptions.headless, hasExecutable: !!launchOptions.executablePath });
+    const launchOptions = await getLaunchOptions();
+    console.log('Launching Puppeteer with options', { headless: launchOptions.headless, hasExecutable: !!launchOptions.executablePath, executablePath: typeof launchOptions.executablePath === 'string' ? launchOptions.executablePath : undefined });
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
