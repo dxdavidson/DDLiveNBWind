@@ -7,18 +7,62 @@ const PORT = 3000;
 const cors = require('cors');
 app.use(cors());
 
+// Optional: try to use a vendor Chromium build if available (e.g., @sparticuz/chromium)
+let chromium;
+try {
+  chromium = require('@sparticuz/chromium');
+} catch (e) {
+  chromium = null;
+}
+
+function getLaunchOptions() {
+  const options = {
+    headless: true,
+    ignoreHTTPSErrors: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu'
+    ],
+    timeout: 30000
+  };
+  if (chromium) {
+    try {
+      if (typeof chromium.executablePath === 'function') {
+        options.executablePath = chromium.executablePath();
+      } else if (chromium.path) {
+        options.executablePath = chromium.path;
+      }
+    } catch (e) {
+      console.warn('Could not resolve Chromium executable path:', e.message);
+    }
+  }
+  return options;
+}
 
 app.get('/api/wind', async (req, res) => {
+  let browser;
   try {
-    const browser = await puppeteer.launch();
+    const launchOptions = getLaunchOptions();
+    console.log('Launching Puppeteer with options', { headless: launchOptions.headless, hasExecutable: !!launchOptions.executablePath });
+    browser = await puppeteer.launch(launchOptions);
+
     const page = await browser.newPage();
-    await page.goto('http://88.97.23.70:82/', { waitUntil: 'networkidle0' });
+    await page.goto('http://88.97.23.70:82/', { waitUntil: 'networkidle0', timeout: 30000 });
 
     // Wait until the table cells update from '---' to actual values (timeout after 10 seconds)
     await page.waitForFunction(() => {
-      const speed = document.querySelector('#latestVariable2').textContent.trim();
-      const direction = document.querySelector('#latestVariable1').textContent.trim();
-      const timestamp = document.querySelector('#latestTimestamp').textContent.trim();
+      const latestVariable2 = document.querySelector('#latestVariable2');
+      const latestVariable1 = document.querySelector('#latestVariable1');
+      const latestTimestampEl = document.querySelector('#latestTimestamp');
+      const speed = latestVariable2 ? latestVariable2.textContent.trim() : '---';
+      const direction = latestVariable1 ? latestVariable1.textContent.trim() : '---';
+      const timestamp = latestTimestampEl ? latestTimestampEl.textContent.trim() : '---';
       return speed !== '---' && direction !== '---' && timestamp !== '---';
     }, { timeout: 10000 });
 
@@ -32,12 +76,21 @@ app.get('/api/wind', async (req, res) => {
     const index = Math.round(directionDegrees / 45) % 8;
     const windFrom = directions[index];
 
-    await browser.close();
-
     res.json({ windSpeed, windDirection, latestTimestamp, windFrom });
   } catch (error) {
-    console.error('Error fetching or parsing wind data with Puppeteer:', error);
-    res.status(500).json({ error: 'Failed to fetch wind data' });
+    console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV, hasChromium: !!chromium });
+    if (error && error.message && error.message.includes('Failed to launch the browser')) {
+      return res.status(500).json({ error: 'Browser failed to launch', details: error.message });
+    }
+    res.status(500).json({ error: 'Failed to fetch wind data', details: error.message });
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (e) {
+        console.error('Error closing browser:', e);
+      }
+    }
   }
 });
 
