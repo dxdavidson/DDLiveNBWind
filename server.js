@@ -4,6 +4,10 @@ const puppeteer = require('puppeteer');
 const app = express();
 const PORT = 3000;
 
+const cors = require('cors');
+app.use(cors());
+
+
 app.get('/api/wind', async (req, res) => {
   try {
     const browser = await puppeteer.launch();
