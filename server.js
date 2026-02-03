@@ -1,3 +1,4 @@
+console.log("RUNNING SERVER FROM:", __filename);
 const express = require('express');
 const puppeteer = require('puppeteer');
 
@@ -7,15 +8,9 @@ const PORT = 3000;
 const cors = require('cors');
 app.use(cors());
 
-// Optional: try to use a vendor Chromium build if available (e.g., @sparticuz/chromium)
-let chromium;
-try {
-  chromium = require('@sparticuz/chromium');
-} catch (e) {
-  chromium = null;
-}
-
 async function getLaunchOptions() {
+  const isLinux = process.platform === 'linux';
+
   const options = {
     headless: true,
     ignoreHTTPSErrors: true,
@@ -26,26 +21,32 @@ async function getLaunchOptions() {
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--single-process',
       '--disable-gpu'
     ],
     timeout: 30000
   };
-  if (chromium) {
+
+  if (isLinux) {
     try {
-      let execPath;
-      if (typeof chromium.executablePath === 'function') {
-        const maybe = chromium.executablePath();
-        // Handle both Promise and direct string return values
-        execPath = (maybe && typeof maybe.then === 'function') ? await maybe : maybe;
-      } else if (chromium.path) {
-        execPath = chromium.path;
-      }
-      if (execPath) options.executablePath = execPath;
+      const chromium = require('@sparticuz/chromium');
+      const execPath = await chromium.executablePath();
+      options.executablePath = execPath;
+      options.args = chromium.args;
     } catch (e) {
-      console.warn('Could not resolve Chromium executable path:', e.message);
+      console.warn('Linux environment but @sparticuz/chromium not available:', e.message);
     }
+  } else {
+    // Windows/macOS: use the browser installed by @puppeteer/browsers
+    const path = require('path');
+    options.executablePath = path.join(
+      __dirname,
+      'chrome',
+      'win64-146.0.7667.0',
+      'chrome-win64',
+      'chrome.exe'
+    );
   }
+
   return options;
 }
 
@@ -82,7 +83,8 @@ app.get('/api/wind', async (req, res) => {
 
     res.json({ windSpeed, windDirection, latestTimestamp, windFrom });
   } catch (error) {
-    console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV, hasChromium: !!chromium });
+    //console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV, hasChromium: !!chromium });
+    console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV });
     if (error && error.message && error.message.includes('Failed to launch the browser')) {
       return res.status(500).json({ error: 'Browser failed to launch', details: error.message });
     }
