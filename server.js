@@ -1,4 +1,3 @@
-//DD
 console.log("RUNNING SERVER FROM:", __filename);
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -80,7 +79,8 @@ app.get('/api/wind', async (req, res) => {
     const directionDegrees = parseInt(windDirection, 10);
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const index = Math.round(directionDegrees / 45) % 8;
-    const windFrom = directions[index];
+    //const windFrom = directions[index];
+    const windFrom = 'DD';
 
     res.json({ windSpeed, windDirection, latestTimestamp, windFrom });
   } catch (error) {
@@ -98,6 +98,49 @@ app.get('/api/wind', async (req, res) => {
         console.error('Error closing browser:', e);
       }
     }
+  }
+});
+
+app.get('/api/tides', async (req, res) => {
+  // Calls Admiralty API for tidal events. Defaults to station 0223 but can be overridden with ?station=XXXX
+  const station = req.query.station || '0223';
+  const admiraltyKey = process.env.ADMIRALTY_API_KEY || 'f13ed0b0b62e442cabbd0769c52533f7';
+  const url = `https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations/${encodeURIComponent(station)}/TidalEvents`;
+
+  // node-fetch v3 is ESM only, so dynamically import it in CommonJS
+  const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
+  const controller = new AbortController();
+  const timeoutMs = 15000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Ocp-Apim-Subscription-Key': admiraltyKey,
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const bodyText = await response.text();
+      return res.status(502).json({ error: 'Admiralty API returned non-OK status', status: response.status, body: bodyText });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      return res.status(504).json({ error: 'Admiralty API request timed out' });
+    }
+    console.error('Error fetching tides from Admiralty API:', err);
+    return res.status(500).json({ error: 'Failed to fetch tides', details: err.message });
   }
 });
 
