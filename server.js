@@ -79,8 +79,8 @@ app.get('/api/wind', async (req, res) => {
     const directionDegrees = parseInt(windDirection, 10);
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const index = Math.round(directionDegrees / 45) % 8;
-    //const windFrom = directions[index];
-    const windFrom = 'DD';
+    const windFrom = directions[index];
+  
 
     res.json({ windSpeed, windDirection, latestTimestamp, windFrom });
   } catch (error) {
