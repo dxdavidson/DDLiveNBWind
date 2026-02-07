@@ -8,6 +8,27 @@ const PORT = 3000;
 const cors = require('cors');
 app.use(cors());
 
+const cacheStore = new Map();
+
+function getCachedValue(key) {
+  const entry = cacheStore.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() >= entry.expiresAt) {
+    cacheStore.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCachedValue(key, value, ttlMs) {
+  cacheStore.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs
+  });
+}
+
 async function getLaunchOptions() {
   const isLinux = process.platform === 'linux';
 
@@ -104,6 +125,14 @@ app.get('/api/livewind', async (req, res) => {
 app.get('/api/tides', async (req, res) => {
   // Calls Admiralty API for tidal events. Defaults to station 0223 but can be overridden with ?station=XXXX
   const station = req.query.station || '0223';
+  const cacheKey = `tides:${station}`;
+  const cached = getCachedValue(cacheKey);
+  if (cached) {
+    console.log(`[tides] Cache hit for station ${station}`);
+    res.set('Cache-Control', 'public, max-age=600');
+    return res.json(cached);
+  }
+  console.log(`[tides] Cache miss for station ${station}; fetching from API`);
   const admiraltyKey = process.env.ADMIRALTY_API_KEY || 'f13ed0b0b62e442cabbd0769c52533f7';
   const url = `https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations/${encodeURIComponent(station)}/TidalEvents`;
 
@@ -133,6 +162,8 @@ app.get('/api/tides', async (req, res) => {
     }
 
     const data = await response.json();
+    setCachedValue(cacheKey, data, 10 * 60 * 1000);
+    res.set('Cache-Control', 'public, max-age=600');
     return res.json(data);
   } catch (err) {
     clearTimeout(timeout);
