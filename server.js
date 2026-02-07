@@ -50,7 +50,7 @@ async function getLaunchOptions() {
   return options;
 }
 
-app.get('/api/wind', async (req, res) => {
+app.get('/api/livewind', async (req, res) => {
   let browser;
   try {
     const launchOptions = await getLaunchOptions();
@@ -141,6 +141,26 @@ app.get('/api/tides', async (req, res) => {
     }
     console.error('Error fetching tides from Admiralty API:', err);
     return res.status(500).json({ error: 'Failed to fetch tides', details: err.message });
+  }
+});
+
+app.get('/api/weatherforecast', async (req, res) => {
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=56.058&longitude=-2.722&hourly=wind_speed_10m,wind_direction_10m,precipitation_probability&wind_speed_unit=mph';
+    
+    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const bodyText = await response.text();
+      return res.status(502).json({ error: 'Open-Meteo API returned non-OK status', status: response.status, body: bodyText });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    console.error('Error fetching weather forecast:', error);
+    res.status(500).json({ error: 'Failed to fetch weather forecast', details: error.message });
   }
 });
 
