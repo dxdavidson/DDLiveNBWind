@@ -74,6 +74,15 @@ async function getLaunchOptions() {
 app.get('/api/livewind', async (req, res) => {
   let browser;
   try {
+    const meanMaxCacheKey = 'livewind:meanMax';
+    const meanMaxCacheTtlMs = 5 * 60 * 1000;
+    const cachedMeanMax = getCachedValue(meanMaxCacheKey);
+    if (cachedMeanMax) {
+      console.log(`[livewind] Mean/max cache hit; using cached 5/30/60 values (refresh every ${Math.round(meanMaxCacheTtlMs / 60000)} minutes)`);
+    } else {
+      console.log(`[livewind] Mean/max cache miss; fetching 5/30/60 values from site (refresh every ${Math.round(meanMaxCacheTtlMs / 60000)} minutes)`);
+    }
+
     const launchOptions = await getLaunchOptions();
     //console.log('Launching Puppeteer with options', { headless: launchOptions.headless, hasExecutable: !!launchOptions.executablePath, executablePath: typeof launchOptions.executablePath === 'string' ? launchOptions.executablePath : undefined });
     browser = await puppeteer.launch(launchOptions);
@@ -96,6 +105,50 @@ app.get('/api/livewind', async (req, res) => {
     const windDirection = await page.$eval('#latestVariable1', el => el.textContent.trim());
     const latestTimestamp = await page.$eval('#latestTimestamp', el => el.textContent.trim());
 
+    let meanMaxByInterval = cachedMeanMax || [];
+    if (!cachedMeanMax) {
+      const timeIntervals = ['5', '30', '60'];
+      meanMaxByInterval = [];
+      for (const interval of timeIntervals) {
+        await page.evaluate((value) => {
+          const radio = document.querySelector(`input[type="radio"][name="timeInterval"][value="${value}"]`);
+          if (radio) {
+            radio.click();
+          }
+        }, interval);
+
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 500)));
+
+        console.log(`[livewind] Reading mean/max row for ${interval} minute interval from site`);
+
+        const rowValues = await page.evaluate(() => {
+          const table = document.querySelector('#meanMaxTable');
+          if (!table) {
+            return null;
+          }
+          const row = table.querySelector('tbody tr') || table.querySelector('tr');
+          if (!row) {
+            return null;
+          }
+          const cells = Array.from(row.querySelectorAll('td, th')).slice(1, 4);
+          if (cells.length < 3) {
+            return null;
+          }
+          return cells.map(cell => cell.textContent.trim());
+        });
+
+        meanMaxByInterval.push({
+          intervalMinutes: interval,
+          min: rowValues ? rowValues[0] : null,
+          mean: rowValues ? rowValues[1] : null,
+          max: rowValues ? rowValues[2] : null
+        });
+      }
+
+      setCachedValue(meanMaxCacheKey, meanMaxByInterval, meanMaxCacheTtlMs);
+      console.log(`[livewind] Mean/max cached for ${Math.round(meanMaxCacheTtlMs / 60000)} minutes`);
+    }
+
     // Calculate windFrom based on windDirection
     const directionDegrees = parseInt(windDirection, 10);
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -103,7 +156,7 @@ app.get('/api/livewind', async (req, res) => {
     const windFrom = directions[index];
   
 
-    res.json({ windSpeed, windDirection, latestTimestamp, windFrom });
+    res.json({ windSpeed, windDirection, latestTimestamp, windFrom, meanMaxByInterval });
   } catch (error) {
     //console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV, hasChromium: !!chromium });
     console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV });
