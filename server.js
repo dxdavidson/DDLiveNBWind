@@ -75,7 +75,7 @@ app.get('/api/livewind', async (req, res) => {
   let browser;
   try {
     const launchOptions = await getLaunchOptions();
-    console.log('Launching Puppeteer with options', { headless: launchOptions.headless, hasExecutable: !!launchOptions.executablePath, executablePath: typeof launchOptions.executablePath === 'string' ? launchOptions.executablePath : undefined });
+    //console.log('Launching Puppeteer with options', { headless: launchOptions.headless, hasExecutable: !!launchOptions.executablePath, executablePath: typeof launchOptions.executablePath === 'string' ? launchOptions.executablePath : undefined });
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
@@ -126,9 +126,10 @@ app.get('/api/tides', async (req, res) => {
   // Calls Admiralty API for tidal events. Defaults to station 0223 but can be overridden with ?station=XXXX
   const station = req.query.station || '0223';
   const cacheKey = `tides:${station}`;
+  const cacheTtlMs = 10 * 60 * 1000;
   const cached = getCachedValue(cacheKey);
   if (cached) {
-    console.log(`[tides] Cache hit for station ${station}`);
+    console.log(`[tides] Cache hit for station ${station}; serving cached response`);
     res.set('Cache-Control', 'public, max-age=600');
     return res.json(cached);
   }
@@ -144,6 +145,7 @@ app.get('/api/tides', async (req, res) => {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    console.log(`[tides] Requesting Admiralty API for station ${station}`);
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -162,7 +164,8 @@ app.get('/api/tides', async (req, res) => {
     }
 
     const data = await response.json();
-    setCachedValue(cacheKey, data, 10 * 60 * 1000);
+    setCachedValue(cacheKey, data, cacheTtlMs);
+    console.log(`[tides] Caching response for station ${station} for ${Math.round(cacheTtlMs / 60000)} minutes`);
     res.set('Cache-Control', 'public, max-age=600');
     return res.json(data);
   } catch (err) {
@@ -178,8 +181,18 @@ app.get('/api/tides', async (req, res) => {
 app.get('/api/weatherforecast', async (req, res) => {
   try {
     const url = 'https://api.open-meteo.com/v1/forecast?latitude=56.058&longitude=-2.722&hourly=wind_speed_10m,wind_direction_10m,precipitation_probability&wind_speed_unit=mph';
+    const cacheKey = 'weatherforecast';
+    const cacheTtlMs = 10 * 60 * 1000;
+    const cached = getCachedValue(cacheKey);
+    if (cached) {
+      console.log('[weatherforecast] Cache hit; serving cached response');
+      res.set('Cache-Control', 'public, max-age=600');
+      return res.json(cached);
+    }
+    console.log('[weatherforecast] Cache miss; fetching from API');
     
     const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+    console.log('[weatherforecast] Requesting Open-Meteo API');
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -188,6 +201,9 @@ app.get('/api/weatherforecast', async (req, res) => {
     }
 
     const data = await response.json();
+    setCachedValue(cacheKey, data, cacheTtlMs);
+    console.log(`[weatherforecast] Caching response for ${Math.round(cacheTtlMs / 60000)} minutes`);
+    res.set('Cache-Control', 'public, max-age=600');
     return res.json(data);
   } catch (error) {
     console.error('Error fetching weather forecast:', error);
@@ -198,8 +214,18 @@ app.get('/api/weatherforecast', async (req, res) => {
 app.get('/api/waves', async (req, res) => {
   try {
     const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=56.06&longitude=-2.7&daily=wave_height_max&timezone=Europe%2FLondon';
+    const cacheKey = 'waves';
+    const cacheTtlMs = 10 * 60 * 1000;
+    const cached = getCachedValue(cacheKey);
+    if (cached) {
+      console.log('[waves] Cache hit; serving cached response');
+      res.set('Cache-Control', 'public, max-age=600');
+      return res.json(cached);
+    }
+    console.log('[waves] Cache miss; fetching from API');
 
     const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+    console.log('[waves] Requesting Open-Meteo marine API');
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -208,6 +234,9 @@ app.get('/api/waves', async (req, res) => {
     }
 
     const data = await response.json();
+    setCachedValue(cacheKey, data, cacheTtlMs);
+    console.log(`[waves] Caching response for ${Math.round(cacheTtlMs / 60000)} minutes`);
+    res.set('Cache-Control', 'public, max-age=600');
     return res.json(data);
   } catch (error) {
     console.error('Error fetching wave data:', error);
