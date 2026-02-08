@@ -195,6 +195,26 @@ app.get('/api/weatherforecast', async (req, res) => {
   }
 });
 
+app.get('/api/waves', async (req, res) => {
+  try {
+    const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=56.06&longitude=-2.7&daily=wave_height_max&timezone=Europe%2FLondon';
+
+    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const bodyText = await response.text();
+      return res.status(502).json({ error: 'Open-Meteo marine API returned non-OK status', status: response.status, body: bodyText });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    console.error('Error fetching wave data:', error);
+    res.status(500).json({ error: 'Failed to fetch wave data', details: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Proxy server running on port ${PORT}`);
 });
