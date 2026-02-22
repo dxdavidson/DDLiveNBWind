@@ -29,6 +29,14 @@ function setCachedValue(key, value, ttlMs) {
   });
 }
 
+function convertKnotsToMph(value) {
+  const numeric = Number.parseFloat(value);
+  if (!Number.isFinite(numeric)) {
+    return value;
+  }
+  return (numeric * 1.15078).toFixed(1);
+}
+
 async function getLaunchOptions() {
   const isLinux = process.platform === 'linux';
 
@@ -101,9 +109,10 @@ app.get('/api/livewind', async (req, res) => {
       return speed !== '---' && direction !== '---' && timestamp !== '---';
     }, { timeout: 10000 });
 
-    const windSpeed = await page.$eval('#latestVariable2', el => el.textContent.trim());
+    const windSpeedKnots = await page.$eval('#latestVariable2', el => el.textContent.trim());
     const windDirection = await page.$eval('#latestVariable1', el => el.textContent.trim());
     const latestTimestamp = await page.$eval('#latestTimestamp', el => el.textContent.trim());
+    const windSpeed = convertKnotsToMph(windSpeedKnots);
 
     let meanMaxByInterval = cachedMeanMax || [];
     if (!cachedMeanMax) {
@@ -139,9 +148,9 @@ app.get('/api/livewind', async (req, res) => {
 
         meanMaxByInterval.push({
           intervalMinutes: interval,
-          min: rowValues ? rowValues[0] : null,
-          mean: rowValues ? rowValues[1] : null,
-          max: rowValues ? rowValues[2] : null
+          min: rowValues ? convertKnotsToMph(rowValues[0]) : null,
+          mean: rowValues ? convertKnotsToMph(rowValues[1]) : null,
+          max: rowValues ? convertKnotsToMph(rowValues[2]) : null
         });
       }
 
@@ -156,7 +165,7 @@ app.get('/api/livewind', async (req, res) => {
     const windFrom = directions[index];
   
 
-    res.json({ windSpeed, windDirection, latestTimestamp, windFrom, meanMaxByInterval });
+    res.json({ windSpeed, windDirection, latestTimestamp, windFrom, meanMaxByInterval, units: 'mph' });
   } catch (error) {
     //console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV, hasChromium: !!chromium });
     console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV });
