@@ -242,7 +242,7 @@ app.get('/api/tides', async (req, res) => {
 
 app.get('/api/weatherforecast', async (req, res) => {
   try {
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=56.058&longitude=-2.722&hourly=wind_speed_10m,wind_direction_10m,precipitation_probability&wind_speed_unit=mph';
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=56.058&longitude=-2.722&hourly=wind_speed_10m,wind_direction_10m,precipitation_probability,temperature_2m&wind_speed_unit=mph';
     const cacheKey = 'weatherforecast';
     const cacheTtlMs = 10 * 60 * 1000;
     const cached = getCachedValue(cacheKey);
