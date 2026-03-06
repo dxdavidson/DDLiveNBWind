@@ -1,4 +1,5 @@
 console.log("RUNNING SERVER FROM:", __filename);
+require('dotenv').config();
 const express = require('express');
 const puppeteer = require('puppeteer');
 
@@ -27,6 +28,104 @@ function setCachedValue(key, value, ttlMs) {
     value,
     expiresAt: Date.now() + ttlMs
   });
+}
+
+const DEFAULT_LOCATION_KEY = 'northberwick';
+
+//To find list of locations, enter the following Curl command, e.g. into Git Bash 
+//curl -v -X GET "https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations" -H "Cache-Control: no-cache" -H "Ocp-Apim-Subscription-Key: $ADMIRALTY_API_KEY"
+
+const LOCATION_PRESETS = {
+  burghead: {
+    forecast: { latitude: 57.70, longitude: -3.49 },
+    marine: { latitude: 57.70, longitude: -3.49 },
+    tides: { station: '0250' }, //Burghead
+    livewind: { url: 'http://88.97.23.70:82/' }
+  },
+  northberwick: {
+    forecast: { latitude: 56.06, longitude: -2.72 },
+    marine: { latitude: 56.06, longitude: -2.72 },
+    tides: { station: '0223' }, // Station 0223 is Fidra
+    livewind: { url: 'http://88.97.23.70:82/' }
+  }
+};
+
+function parseCoordinatesLocation(rawLocation) {
+  if (typeof rawLocation !== 'string') {
+    return null;
+  }
+
+  const trimmed = rawLocation.trim();
+  const match = trimmed.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) {
+    return null;
+  }
+
+  const latitude = Number.parseFloat(match[1]);
+  const longitude = Number.parseFloat(match[2]);
+  const validLatitude = Number.isFinite(latitude) && latitude >= -90 && latitude <= 90;
+  const validLongitude = Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+
+  if (!validLatitude || !validLongitude) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+    cacheKey: `coords:${latitude.toFixed(4)},${longitude.toFixed(4)}`
+  };
+}
+
+function getLocationConfig(rawLocation) {
+  const defaultPreset = LOCATION_PRESETS[DEFAULT_LOCATION_KEY];
+
+  if (typeof rawLocation !== 'string' || rawLocation.trim() === '') {
+    return {
+      key: DEFAULT_LOCATION_KEY,
+      label: DEFAULT_LOCATION_KEY,
+      ...defaultPreset
+    };
+  }
+
+  const trimmed = rawLocation.trim();
+  const presetKey = trimmed.toLowerCase();
+  const preset = LOCATION_PRESETS[presetKey];
+  if (preset) {
+    return {
+      key: presetKey,
+      label: presetKey,
+      ...preset
+    };
+  }
+
+  const coordinates = parseCoordinatesLocation(trimmed);
+  if (coordinates) {
+    return {
+      key: coordinates.cacheKey,
+      label: trimmed,
+      forecast: {
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude
+      },
+      marine: {
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude
+      },
+      tides: {
+        station: defaultPreset.tides.station
+      },
+      livewind: {
+        url: defaultPreset.livewind.url
+      }
+    };
+  }
+
+  return {
+    error: 'Invalid location',
+    message: 'Use a known location name (for example: northberwick) or coordinates in the format latitude,longitude',
+    supportedLocations: Object.keys(LOCATION_PRESETS)
+  };
 }
 
 function convertKnotsToMph(value) {
@@ -79,10 +178,12 @@ async function getLaunchOptions() {
   return options;
 }
 
+// NorthBerwick-only endpoint: intentionally fixed source and ignores query param location.
 app.get('/api/livewind', async (req, res) => {
   let browser;
   try {
-    const meanMaxCacheKey = 'livewind:meanMax';
+    const livewindConfig = LOCATION_PRESETS.northberwick.livewind;
+    const meanMaxCacheKey = 'livewind:meanMax:northberwick';
     const meanMaxCacheTtlMs = 5 * 60 * 1000;
     const cachedMeanMax = getCachedValue(meanMaxCacheKey);
     if (cachedMeanMax) {
@@ -96,7 +197,7 @@ app.get('/api/livewind', async (req, res) => {
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
-    await page.goto('http://88.97.23.70:82/', { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.goto(livewindConfig.url, { waitUntil: 'networkidle0', timeout: 30000 });
 
     // Wait until the table cells update from '---' to actual values (timeout after 10 seconds)
     await page.waitForFunction(() => {
@@ -186,8 +287,13 @@ app.get('/api/livewind', async (req, res) => {
 
 app.get('/api/tides', async (req, res) => {
   // Calls Admiralty API for tidal events. Defaults to station 0223 but can be overridden with ?station=XXXX
-  const station = req.query.station || '0223';
-  const cacheKey = `tides:${station}`;
+  const locationConfig = getLocationConfig(req.query.location);
+  if (locationConfig.error) {
+    return res.status(400).json({ error: locationConfig.error, details: locationConfig.message, supportedLocations: locationConfig.supportedLocations });
+  }
+
+  const station = req.query.station || locationConfig.tides.station;
+  const cacheKey = `tides:${locationConfig.key}:station:${station}`;
   const cacheTtlMs = 10 * 60 * 1000;
   const cached = getCachedValue(cacheKey);
   if (cached) {
@@ -196,7 +302,10 @@ app.get('/api/tides', async (req, res) => {
     return res.json(cached);
   }
   console.log(`[tides] Cache miss for station ${station}; fetching from API`);
-  const admiraltyKey = process.env.ADMIRALTY_API_KEY || 'f13ed0b0b62e442cabbd0769c52533f7';
+  const admiraltyKey = process.env.ADMIRALTY_API_KEY;
+  if (!admiraltyKey) {
+    return res.status(500).json({ error: 'Server misconfiguration', details: 'ADMIRALTY_API_KEY is not set' });
+  }
   const url = `https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations/${encodeURIComponent(station)}/TidalEvents`;
 
   // node-fetch v3 is ESM only, so dynamically import it in CommonJS
@@ -242,8 +351,14 @@ app.get('/api/tides', async (req, res) => {
 
 app.get('/api/weatherforecast', async (req, res) => {
   try {
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=56.058&longitude=-2.722&hourly=wind_speed_10m,wind_direction_10m,precipitation_probability,temperature_2m,weather_code&daily=sunrise,sunset&wind_speed_unit=mph&timezone=Europe%2FLondon';
-    const cacheKey = 'weatherforecast';
+    const locationConfig = getLocationConfig(req.query.location);
+    if (locationConfig.error) {
+      return res.status(400).json({ error: locationConfig.error, details: locationConfig.message, supportedLocations: locationConfig.supportedLocations });
+    }
+
+    const { latitude, longitude } = locationConfig.forecast;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=wind_speed_10m,wind_direction_10m,precipitation_probability,temperature_2m,weather_code&daily=sunrise,sunset&wind_speed_unit=mph&timezone=Europe%2FLondon`;
+    const cacheKey = `weatherforecast:${locationConfig.key}`;
     const cacheTtlMs = 10 * 60 * 1000;
     const cached = getCachedValue(cacheKey);
     if (cached) {
@@ -275,8 +390,14 @@ app.get('/api/weatherforecast', async (req, res) => {
 
 app.get('/api/waves', async (req, res) => {
   try {
-    const url = 'https://marine-api.open-meteo.com/v1/marine?latitude=56.06&longitude=-2.7&daily=wave_height_max,wave_direction_dominant&timezone=Europe%2FLondon';
-    const cacheKey = 'waves';
+    const locationConfig = getLocationConfig(req.query.location);
+    if (locationConfig.error) {
+      return res.status(400).json({ error: locationConfig.error, details: locationConfig.message, supportedLocations: locationConfig.supportedLocations });
+    }
+
+    const { latitude, longitude } = locationConfig.marine;
+    const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${latitude}&longitude=${longitude}&daily=wave_height_max,wave_direction_dominant&timezone=Europe%2FLondon`;
+    const cacheKey = `waves:${locationConfig.key}`;
     const cacheTtlMs = 10 * 60 * 1000;
     const cached = getCachedValue(cacheKey);
     if (cached) {
