@@ -17,7 +17,7 @@ Express proxy server for weather, wave, tide, and live wind data.
 - `/api/livewind`
    - Source: live wind station webpage configured in `LOCATION_PRESETS.northberwick.livewind.url`
    - Retrieval method: page scrape via Puppeteer (not a JSON API)
-   - Data returned: latest wind speed/direction/time and min/mean/max values for 5/30/60-minute intervals
+   - Data returned: latest wind speed/direction/time, a `trend` value (`Strengthening`, `Dropping`, or `Steady`) based on 5% changes between the 60/30/5-minute mean values, and min/mean/max values for 5/30/60-minute intervals
 
 ## Prerequisites
 

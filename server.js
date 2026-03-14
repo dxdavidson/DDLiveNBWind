@@ -136,6 +136,59 @@ function convertKnotsToMph(value) {
   return (numeric * 1.15078).toFixed(1);
 }
 
+function parseNumericValue(value) {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+// Require each shorter averaging window to differ by at least 5% before calling the trend directional.
+const TREND_THRESHOLD_RATIO = 0.05;
+
+function meetsIncreaseThreshold(shorterIntervalMean, longerIntervalMean) {
+  if (longerIntervalMean <= 0) {
+    return shorterIntervalMean > longerIntervalMean;
+  }
+
+  return shorterIntervalMean >= longerIntervalMean * (1 + TREND_THRESHOLD_RATIO);
+}
+
+function meetsDecreaseThreshold(shorterIntervalMean, longerIntervalMean) {
+  if (longerIntervalMean <= 0) {
+    return shorterIntervalMean < longerIntervalMean;
+  }
+
+  return shorterIntervalMean <= longerIntervalMean * (1 - TREND_THRESHOLD_RATIO);
+}
+
+// Compare the 60, 30, and 5 minute mean wind speeds and only mark a trend as directional
+// when each shorter window changes by at least 5%; otherwise treat the wind as steady.
+function determineWindTrend(meanMaxByInterval) {
+  const meansByInterval = new Map(
+    (Array.isArray(meanMaxByInterval) ? meanMaxByInterval : []).map((entry) => [
+      String(entry.intervalMinutes),
+      parseNumericValue(entry.mean)
+    ])
+  );
+
+  const mean5 = meansByInterval.get('5');
+  const mean30 = meansByInterval.get('30');
+  const mean60 = meansByInterval.get('60');
+
+  if (mean5 === null || mean30 === null || mean60 === null) {
+    return 'Steady';
+  }
+
+  if (meetsIncreaseThreshold(mean5, mean30) && meetsIncreaseThreshold(mean30, mean60)) {
+    return 'Strengthening';
+  }
+
+  if (meetsDecreaseThreshold(mean5, mean30) && meetsDecreaseThreshold(mean30, mean60)) {
+    return 'Dropping';
+  }
+
+  return 'Steady';
+}
+
 async function getLaunchOptions() {
   const isLinux = process.platform === 'linux';
 
@@ -266,7 +319,9 @@ app.get('/api/livewind', async (req, res) => {
     const windFrom = directions[index];
   
 
-    res.json({ windSpeed, windDirection, latestTimestamp, windFrom, meanMaxByInterval, units: 'mph' });
+    const trend = determineWindTrend(meanMaxByInterval);
+
+    res.json({ windSpeed, windDirection, latestTimestamp, windFrom, trend, meanMaxByInterval, units: 'mph' });
   } catch (error) {
     //console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV, hasChromium: !!chromium });
     console.error('Error fetching or parsing wind data with Puppeteer:', error, { env: process.env.NODE_ENV });
