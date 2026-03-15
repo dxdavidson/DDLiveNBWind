@@ -175,7 +175,7 @@ function determineWindTrend(meanMaxByInterval) {
   const mean60 = meansByInterval.get('60');
 
   if (mean5 === null || mean30 === null || mean60 === null) {
-    return 'Steady';
+    return 'Stable';
   }
 
   if (meetsIncreaseThreshold(mean5, mean30) && meetsIncreaseThreshold(mean30, mean60)) {
@@ -186,7 +186,7 @@ function determineWindTrend(meanMaxByInterval) {
     return 'Dropping';
   }
 
-  return 'Steady';
+  return 'Stable';
 }
 
 async function getLaunchOptions() {
